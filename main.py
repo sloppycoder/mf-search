@@ -29,17 +29,27 @@ def enumerate_possible_company_names(fund_name: str) -> Iterator[str]:
     yield company_name
 
 
+def extract_ciks(search_result: list | None) -> list[str]:
+    if search_result is None:
+        return []
+
+    ciks = set()
+    for row in search_result:
+        cik, *_ = row
+        ciks.add(cik)
+    return list(ciks)
+
+
 def main():
     n_exact_match, n_multiple_match, n_no_match = 0, 0, 0
 
-    for name in read_fund_names()[:300]:
+    for name in read_fund_names()[:500]:
         match_found = False
         for company_name in enumerate_possible_company_names(name.strip()):
             search_result = mutual_fund_search({"company": company_name})
-            n_matches = len(search_result) if search_result else 0
+            ciks = extract_ciks(search_result)
+            n_matches = len(ciks) if ciks else 0
             if n_matches:
-                # consider any matches a success
-                # TODO: try more matches until exact 1 match is found
                 if n_matches == 1:
                     n_exact_match += 1
                 else:

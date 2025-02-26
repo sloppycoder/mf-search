@@ -36,7 +36,6 @@ def mutual_fund_search(
     to cache
     """
     cache_file = cache_dir / f"{_parameters_checksum(search_terms)}.html"
-
     result = (
         cache_file.read_text()
         if cache_file.exists()
@@ -44,11 +43,12 @@ def mutual_fund_search(
     )
 
     if result:
-        parsed_data = parse_fund_search_result(result)
-        if not cache_file.exists() and parsed_data:
+        if not cache_file.exists():
             cache_file.write_text(result)
 
-        return parsed_data
+        return parse_fund_search_result(result)
+    else:
+        return None
 
 
 def sec_mutual_fund_search(search_terms: dict[str, str]) -> str | None:
@@ -110,6 +110,8 @@ investment_keywords = {
     "dividend",
     "growth",
     "gr",
+    "instl",
+    "international",
 }
 
 # Words that frequently appear *before* investment terms
@@ -134,6 +136,8 @@ strategy_prefix_words = {
     "value",
     "select",
     "sel",
+    "dividend",
+    "div",
 }
 
 
@@ -143,6 +147,8 @@ def split_fund_name(input_fund_name: str) -> tuple[str, str]:
     fund_name = re.sub(r"\bInv\b", "Investment", fund_name)
     fund_name = re.sub(r"\bCo\b", "Company", fund_name)
     fund_name = fund_name.replace("&", " and ")
+    fund_name = fund_name.replace("™", "")
+    fund_name = fund_name.replace("JHancock", "Hancock John")
 
     words = fund_name.split()
     lower_words = [
