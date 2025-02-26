@@ -28,3 +28,4 @@ cdk.out
 # local project files
 cache/
 tmp/
+edgar-*.json

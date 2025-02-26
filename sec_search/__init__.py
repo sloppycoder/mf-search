@@ -1,12 +1,16 @@
 import hashlib
+import json
 import re
 from pathlib import Path
+from typing import Iterator
 from urllib.parse import urlencode
 
 import requests
 import spacy
 from bs4 import BeautifulSoup
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
+
+from sec_search.llm import pick_match_with_llm
 
 # Load the English NLP model
 nlp = spacy.load("en_core_web_sm")
@@ -141,15 +145,7 @@ strategy_prefix_words = {
 }
 
 
-def split_fund_name(input_fund_name: str) -> tuple[str, str]:
-    fund_name = re.sub(r"U\.S\.", "US", input_fund_name)
-    fund_name = re.sub(r"U\.S", "US", fund_name)
-    fund_name = re.sub(r"\bInv\b", "Investment", fund_name)
-    fund_name = re.sub(r"\bCo\b", "Company", fund_name)
-    fund_name = fund_name.replace("&", " and ")
-    fund_name = fund_name.replace("™", "")
-    fund_name = fund_name.replace("JHancock", "Hancock John")
-
+def split_fund_name(fund_name: str) -> tuple[str, str]:
     words = fund_name.split()
     lower_words = [
         word.lower() for word in words
@@ -176,6 +172,46 @@ def split_fund_name(input_fund_name: str) -> tuple[str, str]:
         fund_name,
         "",
     )  # If no investment strategy is found, assume the whole name is the company
+
+
+def _normalize(orig_fund_name: str) -> str:
+    # normalize the fund name
+    # replace common abbrev and symbols
+    fund_name = re.sub(r"U\.S\.", "US", orig_fund_name)
+    fund_name = re.sub(r"U\.S", "US", fund_name)
+    fund_name = re.sub(r"\bInv\b", "Investment", fund_name)
+    fund_name = re.sub(r"\bCo\b", "Company", fund_name)
+    fund_name = fund_name.replace("&", " and ")
+    fund_name = fund_name.replace("™", "")  # (TM)
+    fund_name = fund_name.replace("®", "")  # (R)
+
+    # fund names that yeidls no match with SEC search page
+    # and must be transformed to match
+    fund_name = fund_name.replace("JHancock", "Hancock John")
+
+    return fund_name.strip()
+
+
+def search_fund_name_with_variations(
+    orig_fund_name: str,
+    cache_dir: Path = default_cache_dir,
+) -> str | None:
+    for company_name in _enumerate_possible_company_names(_normalize(orig_fund_name)):
+        search_result = mutual_fund_search({"company": company_name}, cache_dir=cache_dir)
+        if search_result:
+            if len(search_result) == 1:
+                cik, *_ = search_result[0]
+                return cik
+            else:
+                llm_result = pick_match_with_llm(orig_fund_name, search_result)
+                if llm_result:
+                    result = json.loads(llm_result)
+                    if "cik" in result:
+                        return result["cik"]
+                    else:
+                        print(f"Invalid response: {result}")
+
+    return None
 
 
 def _flatten_rows(data):
@@ -219,6 +255,19 @@ def _flatten_rows(data):
                 )
 
     return processed_data
+
+
+def _enumerate_possible_company_names(fund_name: str) -> Iterator[str]:
+    """enumerate various company names for use with search"""
+    if "/" in fund_name:
+        parts = fund_name.split("/")
+        yield parts[0].strip()
+    else:
+        yield fund_name.strip()
+
+    # flow will come here if none of the above yielded satisfactory results
+    company_name, _ = split_fund_name(fund_name.strip())
+    yield company_name
 
 
 def _parameters_checksum(params: dict[str, str]) -> str:
