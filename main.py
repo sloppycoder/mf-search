@@ -28,13 +28,14 @@ def main():
         print("fund_name,cik")
         f.write("[")
 
-        for name in read_fund_names()[:500]:
+        for name in read_fund_names():
             n_total += 1
             cik = search_fund_name_with_variations(name)
             if cik:
                 print(f"{name},{cik}")
             if cik is None:
-                f.write(f"'{name}',")
+                print(f"{name},")
+                f.write(f"'{name}',\n")
                 n_no_match += 1
 
         f.write("]")
