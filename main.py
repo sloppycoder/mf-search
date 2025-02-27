@@ -24,24 +24,21 @@ def extract_ciks(search_result: list | None) -> list[str]:
 def main():
     n_total, n_no_match = 0, 0
 
-    with open("tmp/bad_list.txt", "w") as f:
-        print("fund_name,cik")
-        f.write("[")
-
+    with open("tmp/cik_map.csv", "w") as f_good:
         for name in read_fund_names():
             n_total += 1
-            cik = search_fund_name_with_variations(name, use_llm=False)
+            cik = search_fund_name_with_variations(name, use_llm=True)
             if cik:
-                pass
-                # print(f"{name},{cik}")
-            if cik is None:
-                print(f"{name},")
-                f.write(f"'{name}',\n")
+                f_good.write(f"{name},{cik}\n")
+            else:
+                f_good.write(f"{name},\n")
                 n_no_match += 1
+            f_good.flush()
 
-        f.write("]")
+            if n_total % 100 == 0:
+                print(f"## Total: {n_total:5d}, No matches: {n_no_match:4d}")
 
-    print(f"## Total: {n_total}, No matches: {n_no_match}")
+    print(f"## Total: {n_total:5d}, No matches: {n_no_match:4d}")
 
 
 if __name__ == "__main__":

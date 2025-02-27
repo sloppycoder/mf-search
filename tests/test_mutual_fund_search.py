@@ -15,18 +15,12 @@ def test_mutual_fund_search():
 
 
 def test_derive_fund_company_name_batch():
-    with open(Path(__file__).parent / "../tmp/fundnames.csv") as f:
-        funds = [line.strip() for line in f.readlines()][1:][:50]
+    with open(Path(__file__).parent / "../tmp/bad_list.csv") as f:
+        funds = [line.strip() for line in f.readlines()][1:]
 
     for fund in funds:
         company_name = derive_fund_company_name(fund)
         print(f"{company_name} -> {fund}")
-    # company_name_1, _ = derive_fund_company_name("JHancock U.S. Growth A")
-    # company_name_2, _ = split_fund_name("Russell Inv US Strategic Equity A")
-    # company_name_3, _ = split_fund_name("EquityCompass Quality Dividend A")
-    # company_name_4, _ = split_fund_name("Epoch US Small-Mid Cap Equity Adv")
-    # company_name_5, _ = split_fund_name("Segall Bryant & Hamill Sm Cp Val Ins")
-    # company_name_6, _ = split_fund_name("GMO US Flexible Equities III")
     assert True
 
 
