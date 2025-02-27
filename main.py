@@ -30,9 +30,10 @@ def main():
 
         for name in read_fund_names():
             n_total += 1
-            cik = search_fund_name_with_variations(name)
+            cik = search_fund_name_with_variations(name, use_llm=False)
             if cik:
-                print(f"{name},{cik}")
+                pass
+                # print(f"{name},{cik}")
             if cik is None:
                 print(f"{name},")
                 f.write(f"'{name}',\n")

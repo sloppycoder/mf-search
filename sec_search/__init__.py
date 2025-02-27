@@ -6,14 +6,11 @@ from typing import Iterator
 from urllib.parse import urlencode
 
 import requests
-import spacy
 from bs4 import BeautifulSoup
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 from sec_search.llm import pick_match_with_llm
-
-# Load the English NLP model
-nlp = spacy.load("en_core_web_sm")
+from sec_search.util import derive_fund_company_name
 
 BASE_URL = "https://www.sec.gov/cgi-bin/series"
 DEFAULT_USER_AGENT = "Lee Lynn (hayashi@yahoo.com)"
@@ -91,99 +88,15 @@ def parse_fund_search_result(html_content: str):
     return _flatten_rows(extracted_rows)
 
 
-# Define investment-related keywords (lowercase for case-insensitive matching)
-investment_keywords = {
-    "equity",
-    "equities",
-    "eq",
-    "stock",
-    "cap",
-    "cp",
-    "income",
-    "growth",
-    "gr",
-    "fund",
-    "value",
-    "val",
-    "portfolio",
-    "bond",
-    "blend",
-    "markets",
-    "market",
-    "mkt",
-    "dividend",
-    "growth",
-    "gr",
-    "instl",
-    "international",
-}
-
-# Words that frequently appear *before* investment terms
-# and should be included in strategy
-strategy_prefix_words = {
-    "large",
-    "sm",
-    "small",
-    "smid",
-    "small-mid",
-    "mid",
-    "us",
-    "global",
-    "international",
-    "emerging",
-    "income",
-    "quality",
-    "strategic",
-    "flexible",
-    "core",
-    "cor",
-    "value",
-    "select",
-    "sel",
-    "dividend",
-    "div",
-}
-
-
-def split_fund_name(fund_name: str) -> tuple[str, str]:
-    words = fund_name.split()
-    lower_words = [
-        word.lower() for word in words
-    ]  # Convert words to lowercase for comparison
-
-    # Identify where the investment strategy starts
-    for i, lower_word in enumerate(lower_words):
-        if lower_word in investment_keywords:
-            start_index = i  # Assume this is the start of the strategy
-
-            # If the previous word is in strategy prefixes, include it in the strategy
-            if i > 0 and lower_words[i - 1] in strategy_prefix_words:
-                start_index = i - 1
-
-            # If "US" is in the company part, move it into strategy
-            while start_index > 0 and lower_words[start_index - 1] == "us":
-                start_index -= 1
-
-            return " ".join(words[:start_index]), " ".join(
-                words[start_index:]
-            )  # Return original case words
-
-    return (
-        fund_name,
-        "",
-    )  # If no investment strategy is found, assume the whole name is the company
-
-
 def _normalize(orig_fund_name: str) -> str:
     # normalize the fund name
     # replace common abbrev and symbols
-    fund_name = re.sub(r"U\.S\.", "US", orig_fund_name)
+    fund_name = orig_fund_name.replace("&", " and ")
+    # fund_name = fund_name.replace("-", " ")
+    fund_name = re.sub(r"U\.S\.", "US", fund_name)
     fund_name = re.sub(r"U\.S", "US", fund_name)
     fund_name = re.sub(r"\bInv\b", "Investment", fund_name)
     fund_name = re.sub(r"\bCo\b", "Company", fund_name)
-    fund_name = fund_name.replace("&", " and ")
-    fund_name = fund_name.replace("™", "")  # (TM)
-    fund_name = fund_name.replace("®", "")  # (R)
 
     # fund names that yeidls no match with SEC search page
     # and must be transformed to match
@@ -193,23 +106,34 @@ def _normalize(orig_fund_name: str) -> str:
 
 
 def search_fund_name_with_variations(
-    orig_fund_name: str,
+    fund_name: str,
     cache_dir: Path = default_cache_dir,
+    use_llm: bool = True,
 ) -> str | None:
-    for company_name in _enumerate_possible_company_names(_normalize(orig_fund_name)):
+    for company_name in _enumerate_possible_company_names(_normalize(fund_name)):
         search_result = mutual_fund_search({"company": company_name}, cache_dir=cache_dir)
         if search_result:
             if len(search_result) == 1:
                 cik, *_ = search_result[0]
                 return cik
             else:
-                llm_result = pick_match_with_llm(orig_fund_name, search_result)
-                if llm_result:
-                    result = json.loads(llm_result)
-                    if "cik" in result:
-                        return result["cik"]
-                    else:
-                        print(f"Invalid response: {result}")
+                ciks = {list(item)[0] for item in search_result}
+                if len(ciks) == 1:
+                    return ciks.pop()
+
+                if use_llm:
+                    llm_result = pick_match_with_llm(fund_name, search_result)
+                    if llm_result:
+                        try:
+                            result = json.loads(llm_result)
+                            if "cik" in result:
+                                return result["cik"]
+                            # else:
+                            #     print(f"Invalid response: {result}")
+                        except json.JSONDecodeError:
+                            pass
+                else:
+                    return "/".join(ciks)
 
     return None
 
@@ -257,16 +181,23 @@ def _flatten_rows(data):
     return processed_data
 
 
-def _enumerate_possible_company_names(fund_name: str) -> Iterator[str]:
+def _enumerate_possible_company_names(orig_fund_name: str) -> Iterator[str]:
     """enumerate various company names for use with search"""
+    fund_name = _normalize(orig_fund_name)
     if "/" in fund_name:
         parts = fund_name.split("/")
+        yield parts[0].strip()
+    elif "™" in fund_name:  # (TM)
+        parts = fund_name.split("™")
+        yield parts[0].strip()
+    elif "®" in fund_name:  # (R)
+        parts = fund_name.split("®")
         yield parts[0].strip()
     else:
         yield fund_name.strip()
 
     # flow will come here if none of the above yielded satisfactory results
-    company_name, _ = split_fund_name(fund_name.strip())
+    company_name = derive_fund_company_name(fund_name)
     yield company_name
 
 

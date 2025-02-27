@@ -17,6 +17,25 @@ def init_vertaxai() -> None:
     vertexai.init(project=gcp_project_id, location=gcp_region)
 
 
+def pick_match_with_llm(fund_name: str, search_result: list | None):
+    if not search_result:
+        return None
+
+    prompt = _pick_fund_prompt(fund_name, search_result)
+    response = _ask_model("gemini-1.5-flash-002", prompt)
+    if response:
+        return _remove_md_json_wrapper(response)
+    else:
+        return None
+
+
+def _ask_model(model: str, prompt: str) -> Optional[str]:
+    if model.startswith("gemini"):
+        return _chat_with_gemini(model, prompt)
+    else:
+        raise ValueError(f"Unknown model: {model}")
+
+
 def _pick_fund_prompt(fund_name: str, search_result: list) -> str:
     unique_funds = set()
     fund_list = []
@@ -40,25 +59,6 @@ please tell me which row whose fund name column is the closest match to
 use the following format for output:
 {{"fund_name": "<fund_name_from_table", "cik": "<cik_from_table>"}}
 """
-
-
-def pick_match_with_llm(fund_name: str, search_result: list | None):
-    if not search_result:
-        return None
-
-    prompt = _pick_fund_prompt(fund_name, search_result)
-    response = _ask_model("gemini-1.5-flash-002", prompt)
-    if response:
-        return _remove_md_json_wrapper(response)
-    else:
-        return None
-
-
-def _ask_model(model: str, prompt: str) -> Optional[str]:
-    if model.startswith("gemini"):
-        return _chat_with_gemini(model, prompt)
-    else:
-        raise ValueError(f"Unknown model: {model}")
 
 
 def _remove_md_json_wrapper(response: str) -> str | None:
