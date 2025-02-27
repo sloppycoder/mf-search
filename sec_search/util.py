@@ -1,6 +1,8 @@
 # Define investment-related keywords (lowercase for case-insensitive matching)
 
 geo_keywords = [
+    "u.s.",
+    "u.s",
     "us",
     "global",
     "international",
@@ -17,8 +19,6 @@ investment_keywords = {
     "cap",
     "cp",
     "income",
-    "growth",
-    "gr",
     "value",
     "val",
     "portfolio",
@@ -31,12 +31,14 @@ investment_keywords = {
     "growth",
     "gr",
     "instl",
+    "quant",
 }
 
 # Words that frequently appear *before* investment terms
 # and should be included in strategy
 strategy_prefix_words = {
     "large",
+    "lg",
     "sm",
     "small",
     "smid",
@@ -54,6 +56,7 @@ strategy_prefix_words = {
     "dividend",
     "div",
     "deep",
+    "diversified",
 }
 
 
@@ -86,6 +89,6 @@ def derive_fund_company_name(fund_name: str) -> str:
     if indexes:
         start_index = min(indexes)
     else:
-        start_index = 0
+        start_index = len(words)
 
     return " ".join(words[:start_index])
