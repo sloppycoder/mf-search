@@ -1,6 +1,9 @@
+import csv
+import json
 from pathlib import Path
 
 from sec_search import (
+    _normalize,
     mutual_fund_search,
     search_fund_name_with_variations,
 )
@@ -15,12 +18,22 @@ def test_mutual_fund_search():
 
 
 def test_derive_fund_company_name_batch():
-    with open(Path(__file__).parent / "../tmp/bad_list.csv") as f:
-        funds = [line.strip() for line in f.readlines()][1:]
+    with open(Path(__file__).parent / "../tmp/cik_map.csv") as f:
+        reader = csv.reader(f)
+        next(reader)  # Skip the header line
 
-    for fund in funds:
-        company_name = derive_fund_company_name(fund)
-        print(f"{company_name} -> {fund}")
+        bad_list = []
+        for row in reader:
+            if not row[2]:
+                bad_list.append(row[0])
+
+    with open(Path(__file__).parent / "../tmp/bad_list.json", "w") as f:
+        json.dump(bad_list, f, indent=4)
+    with open(Path(__file__).parent / "../tmp/bad_companyname.txt", "w") as f_bad:
+        bad_list.sort()
+        for fund in bad_list:
+            f_bad.write(f"{fund}->{derive_fund_company_name(_normalize(fund))}\n")
+
     assert True
 
 

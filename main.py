@@ -1,3 +1,5 @@
+import sys
+
 from dotenv import load_dotenv
 
 from sec_search import search_fund_name_with_variations
@@ -24,23 +26,23 @@ def extract_ciks(search_result: list | None) -> list[str]:
     return list(ciks)
 
 
-def main():
+def main(force_overwrite=False):
     n_total, n_no_match = 0, 0
     output_file = "tmp/cik_map.csv"
 
     # read number of records in the output file
-    offset = len(read_fund_names(output_file))
+    offset = 0 if force_overwrite else len(read_fund_names(output_file))
 
-    with open(output_file, "a+") as f_good:
+    with open(output_file, "w" if force_overwrite else "a") as f:
         for name in read_fund_names("tmp/fundnames.csv")[offset:]:
             n_total += 1
-            cik = search_fund_name_with_variations(name, use_llm=True)
+            company_name, cik = search_fund_name_with_variations(name, use_llm=False)
             if cik:
-                f_good.write(f"{name},{cik}\n")
+                f.write(f'"{name}","{company_name}","{cik}"\n')
             else:
-                f_good.write(f"{name},\n")
+                f.write(f'"{name}","",""\n')
                 n_no_match += 1
-            f_good.flush()
+            f.flush()
 
             if n_total % 100 == 0:
                 print(f"## Total: {n_total:5d}, No matches: {n_no_match:4d}")
@@ -49,4 +51,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    force_overwrite = len(sys.argv) > 1 and sys.argv[1] == "-f"
+    main(force_overwrite)

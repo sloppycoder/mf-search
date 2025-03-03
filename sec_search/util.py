@@ -1,14 +1,15 @@
 # Define investment-related keywords (lowercase for case-insensitive matching)
 
 geo_keywords = [
-    "u.s.",
-    "u.s",
     "us",
     "global",
     "international",
     "emerging",
     "developed",
     "foreign",
+    "esg",
+    "sustainable",
+    "sustsocial",
 ]
 
 investment_keywords = {
@@ -16,6 +17,7 @@ investment_keywords = {
     "equities",
     "eq",
     "stock",
+    "stk",
     "cap",
     "cp",
     "income",
@@ -32,6 +34,7 @@ investment_keywords = {
     "gr",
     "instl",
     "quant",
+    "balanced",
 }
 
 # Words that frequently appear *before* investment terms
@@ -39,15 +42,22 @@ investment_keywords = {
 strategy_prefix_words = {
     "large",
     "lg",
+    "lgcp",
     "sm",
     "small",
     "smid",
     "small-mid",
+    "sm/md",
+    "s-m",
+    "small-cap",
     "mid",
-    "income",
+    "mid-cap",
+    "micro-cap",
+    "micro",
     "quality",
     "strategic",
     "flexible",
+    "flex",
     "core",
     "cor",
     "value",
@@ -57,6 +67,13 @@ strategy_prefix_words = {
     "div",
     "deep",
     "diversified",
+    "targeted",
+    "adaptive",
+    "behvrl",
+    "behavioral",
+    "behav",
+    "series",
+    "ser",
 }
 
 

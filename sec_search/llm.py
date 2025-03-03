@@ -1,3 +1,4 @@
+import concurrent.futures
 import json
 import logging
 import os
@@ -17,12 +18,31 @@ def init_vertaxai() -> None:
     vertexai.init(project=gcp_project_id, location=gcp_region)
 
 
+def run_with_timeout(timeout, func, *args, **kwargs):
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future = executor.submit(func, *args, **kwargs)
+        try:
+            return future.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            raise
+
+
+@retry(
+    stop=stop_after_attempt(4),
+    wait=wait_exponential(multiplier=1, min=5, max=60),
+    retry=retry_if_exception_type(
+        (
+            ResourceExhausted,
+            concurrent.futures.TimeoutError,
+        )
+    ),
+)
 def pick_match_with_llm(fund_name: str, search_result: list | None):
     if not search_result:
         return None
 
     prompt = _pick_fund_prompt(fund_name, search_result)
-    response = _ask_model("gemini-1.5-flash-002", prompt)
+    response = run_with_timeout(180, _ask_model, "gemini-1.5-flash-002", prompt)
     if response:
         return _remove_md_json_wrapper(response)
     else:
@@ -46,10 +66,12 @@ def _pick_fund_prompt(fund_name: str, search_result: list) -> str:
             unique_funds.add(fund_entry)
             fund_list.append(fund_entry)
 
+    # construct prompt using first 100 fund names
+    # more fund matches probably means too generic search term
     return f"""
 I have this fund table which consists of 2 columns, fund name and CIK.
 ==begin table==
-{"\n".join(fund_list)}
+{"\n".join(fund_list[:100])}
 ==end table==
 
 please tell me which row whose fund name column is the closest match to
@@ -58,6 +80,8 @@ please tell me which row whose fund name column is the closest match to
 
 use the following format for output:
 {{"fund_name": "<fund_name_from_table", "cik": "<cik_from_table>"}}
+when no match, please return an empty json object, shown below:
+{{}}
 """
 
 
@@ -77,15 +101,11 @@ def _remove_md_json_wrapper(response: str) -> str | None:
             return json_str
         except json.JSONDecodeError:
             print("Failed to parse JSON from response")
+            print(json_str)
 
     return response
 
 
-@retry(
-    stop=stop_after_attempt(6),
-    wait=wait_exponential(multiplier=1, min=4, max=120),
-    retry=retry_if_exception_type(ResourceExhausted),
-)
 def _chat_with_gemini(model_name: str, prompt: str) -> Optional[str]:
     try:
         init_vertaxai()

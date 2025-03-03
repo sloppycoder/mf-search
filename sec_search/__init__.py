@@ -92,11 +92,15 @@ def _normalize(orig_fund_name: str) -> str:
     # normalize the fund name
     # replace common abbrev and symbols
     fund_name = orig_fund_name.replace("&", " and ")
-    # fund_name = fund_name.replace("-", " ")
     fund_name = re.sub(r"U\.S\.", "US", fund_name)
     fund_name = re.sub(r"U\.S", "US", fund_name)
     fund_name = re.sub(r"\bInv\b", "Investment", fund_name)
     fund_name = re.sub(r"\bCo\b", "Company", fund_name)
+    fund_name = fund_name.replace("®", "")
+    fund_name = fund_name.replace("™", "")
+    fund_name = fund_name.replace('"', "")
+    fund_name = fund_name.replace("'", "")
+    fund_name = fund_name.replace("\u00ae", "")
 
     # fund names that yeidls no match with SEC search page
     # and must be transformed to match
@@ -109,17 +113,17 @@ def search_fund_name_with_variations(
     fund_name: str,
     cache_dir: Path = default_cache_dir,
     use_llm: bool = True,
-) -> str | None:
+) -> tuple[str | None, str | None]:
     for company_name in _enumerate_possible_company_names(_normalize(fund_name)):
         search_result = mutual_fund_search({"company": company_name}, cache_dir=cache_dir)
         if search_result:
             if len(search_result) == 1:
                 cik, *_ = search_result[0]
-                return cik
+                return company_name, cik
             else:
                 ciks = {list(item)[0] for item in search_result}
                 if len(ciks) == 1:
-                    return ciks.pop()
+                    return company_name, ciks.pop()
 
                 if use_llm:
                     llm_result = pick_match_with_llm(fund_name, search_result)
@@ -127,15 +131,13 @@ def search_fund_name_with_variations(
                         try:
                             result = json.loads(llm_result)
                             if "cik" in result:
-                                return result["cik"]
-                            # else:
-                            #     print(f"Invalid response: {result}")
+                                return company_name, result["cik"]
                         except json.JSONDecodeError:
                             pass
                 else:
-                    return "/".join(ciks)
+                    return company_name, "/".join(ciks)
 
-    return None
+    return None, None
 
 
 def _flatten_rows(data):
@@ -186,12 +188,6 @@ def _enumerate_possible_company_names(orig_fund_name: str) -> Iterator[str]:
     fund_name = _normalize(orig_fund_name)
     if "/" in fund_name:
         parts = fund_name.split("/")
-        yield parts[0].strip()
-    elif "™" in fund_name:  # (TM)
-        parts = fund_name.split("™")
-        yield parts[0].strip()
-    elif "®" in fund_name:  # (R)
-        parts = fund_name.split("®")
         yield parts[0].strip()
     else:
         yield fund_name.strip()
