@@ -109,21 +109,31 @@ def _normalize(orig_fund_name: str) -> str:
     return fund_name.strip()
 
 
+def search_fund_with_ticker(
+    ticker: str, cache_dir: Path = default_cache_dir
+) -> str | None:
+    result = mutual_fund_search({"ticker": ticker})
+    if result:
+        return result[0]
+
+    return None
+
+
 def search_fund_name_with_variations(
     fund_name: str,
     cache_dir: Path = default_cache_dir,
     use_llm: bool = True,
-) -> tuple[str | None, str | None]:
+) -> str | None:
     for company_name in _enumerate_possible_company_names(_normalize(fund_name)):
         search_result = mutual_fund_search({"company": company_name}, cache_dir=cache_dir)
         if search_result:
             if len(search_result) == 1:
                 cik, *_ = search_result[0]
-                return company_name, cik
+                return cik
             else:
                 ciks = {list(item)[0] for item in search_result}
                 if len(ciks) == 1:
-                    return company_name, ciks.pop()
+                    return ciks.pop()
 
                 if use_llm:
                     llm_result = pick_match_with_llm(fund_name, search_result)
@@ -131,13 +141,13 @@ def search_fund_name_with_variations(
                         try:
                             result = json.loads(llm_result)
                             if "cik" in result:
-                                return company_name, result["cik"]
+                                return result["cik"]
                         except json.JSONDecodeError:
                             pass
                 else:
-                    return company_name, "/".join(ciks)
+                    return "/".join(ciks)
 
-    return None, None
+    return None
 
 
 def _flatten_rows(data):

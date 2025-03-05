@@ -1,47 +1,63 @@
+import csv
+import re
 import sys
 
 from dotenv import load_dotenv
 
-from sec_search import search_fund_name_with_variations
+from sec_search import (
+    search_fund_name_with_variations,
+    search_fund_with_ticker,
+)
 
 load_dotenv()
 
+ticker_regex = re.compile(r"([A-Z]{3,6})")
 
-def read_fund_names(filename):
+
+def read_funds(filename):
+    funds = []
     try:
         with open(filename, "r") as f:
-            return [name.split(",")[0].strip() for name in f.readlines()]
+            reader = csv.DictReader(f)
+            for row in reader:
+                fund = {key.lower(): value.strip() for key, value in row.items()}
+                if fund["ticker"] and not ticker_regex.match(fund["ticker"]):
+                    fund["ticker"] = ""
+                funds.append(fund)
+        return funds
     except FileNotFoundError:
         return []
 
 
-def extract_ciks(search_result: list | None) -> list[str]:
-    if search_result is None:
-        return []
-
-    ciks = set()
-    for row in search_result:
-        cik, *_ = row
-        ciks.add(cik)
-    return list(ciks)
-
-
-def main(force_overwrite=False):
+def main(source_file, output_file, overwrite=False, use_llm=True):
     n_total, n_no_match = 0, 0
-    output_file = "tmp/cik_map.csv"
 
     # read number of records in the output file
-    offset = 0 if force_overwrite else len(read_fund_names(output_file))
+    offset = 0 if overwrite else len(read_funds(output_file))
 
-    with open(output_file, "w" if force_overwrite else "a") as f:
-        for name in read_fund_names("tmp/fundnames.csv")[offset:]:
+    with open(output_file, "w" if overwrite else "a") as f:
+        if overwrite:
+            f.write("Name,Ticker,CIK\n")
+
+        for item in read_funds(source_file)[offset:]:
             n_total += 1
-            company_name, cik = search_fund_name_with_variations(name, use_llm=False)
-            if cik:
-                f.write(f'"{name}","{company_name}","{cik}"\n')
-            else:
-                f.write(f'"{name}","",""\n')
+
+            name = item["name"]
+            ticker = item["ticker"]
+            cik = ""
+
+            # search with ticker if it's available
+            if ticker:
+                cik = search_fund_with_ticker(ticker)
+
+            # if no match with ticker, search with fund name
+            if not cik:
+                cik = search_fund_name_with_variations(name, use_llm=use_llm)
+
+            if not cik:
                 n_no_match += 1
+
+            f.write(f'"{name},{ticker},"{cik}"\n')
             f.flush()
 
             if n_total % 100 == 0:
@@ -51,5 +67,9 @@ def main(force_overwrite=False):
 
 
 if __name__ == "__main__":
-    force_overwrite = len(sys.argv) > 1 and sys.argv[1] == "-f"
-    main(force_overwrite)
+    main(
+        source_file="tmp/fund_name_ticker.csv",
+        output_file="tmp/cik_map.csv",
+        overwrite=len(sys.argv) > 1 and sys.argv[1] == "-f",
+        use_llm=False,
+    )

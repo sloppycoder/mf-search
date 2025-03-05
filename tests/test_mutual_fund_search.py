@@ -2,6 +2,7 @@ import csv
 import json
 from pathlib import Path
 
+from main import read_funds
 from sec_search import (
     _normalize,
     mutual_fund_search,
@@ -10,11 +11,25 @@ from sec_search import (
 from sec_search.util import derive_fund_company_name
 
 cache_dir = Path(__file__).parent / "cache"
+data_dir = Path(__file__).parent / "data"
+
+
+def test_read_funds():
+    funds = read_funds(data_dir / "test_fund_ticker.csv")
+    assert len(funds) == 4
+    assert funds[0]["ticker"] == "LOCSX"
+    assert funds[1]["ticker"] == ""
+    assert funds[2]["ticker"] == ""
+    assert funds[3]["ticker"] == "RFISX"
 
 
 def test_mutual_fund_search():
-    result = mutual_fund_search({"company": "Strategic Advisers"}, cache_dir=cache_dir)
-    assert result
+    result = mutual_fund_search({"company": "Westfield Capital"}, cache_dir=cache_dir)
+    assert result and len(result) == 4
+    result = mutual_fund_search({"ticker": "LOCSX"}, cache_dir=cache_dir)
+    assert result and len(result) == 1
+    result = mutual_fund_search({"ticker": "Thaler"}, cache_dir=cache_dir)
+    assert not result
 
 
 def test_derive_fund_company_name_batch():
