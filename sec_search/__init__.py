@@ -105,6 +105,7 @@ def _normalize(orig_fund_name: str) -> str:
     # fund names that yeidls no match with SEC search page
     # and must be transformed to match
     fund_name = fund_name.replace("JHancock", "Hancock John")
+    fund_name = fund_name.replace("TRP ", "T.RowePrice")
 
     return fund_name.strip()
 
@@ -113,17 +114,14 @@ def search_fund_with_ticker(
     ticker: str, cache_dir: Path = default_cache_dir
 ) -> str | None:
     result = mutual_fund_search({"ticker": ticker})
-    if result:
-        return result[0]
-
-    return None
+    return list(result[0])[0] if result else None
 
 
 def search_fund_name_with_variations(
     fund_name: str,
     cache_dir: Path = default_cache_dir,
     use_llm: bool = True,
-) -> str | None:
+) -> str:
     for company_name in _enumerate_possible_company_names(_normalize(fund_name)):
         search_result = mutual_fund_search({"company": company_name}, cache_dir=cache_dir)
         if search_result:
@@ -147,7 +145,7 @@ def search_fund_name_with_variations(
                 else:
                     return "/".join(ciks)
 
-    return None
+    return ""
 
 
 def _flatten_rows(data):

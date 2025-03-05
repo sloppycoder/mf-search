@@ -1,13 +1,12 @@
 import csv
-import json
 from pathlib import Path
 
 from main import read_funds
 from sec_search import (
-    _normalize,
     mutual_fund_search,
     search_fund_name_with_variations,
 )
+from sec_search.llm import _derive_company_name
 from sec_search.util import derive_fund_company_name
 
 cache_dir = Path(__file__).parent / "cache"
@@ -42,12 +41,10 @@ def test_derive_fund_company_name_batch():
             if not row[2]:
                 bad_list.append(row[0])
 
-    with open(Path(__file__).parent / "../tmp/bad_list.json", "w") as f:
-        json.dump(bad_list, f, indent=4)
-    with open(Path(__file__).parent / "../tmp/bad_companyname.txt", "w") as f_bad:
+    with open(Path(__file__).parent / "../tmp/no_match.csv", "w") as f:
         bad_list.sort()
         for fund in bad_list:
-            f_bad.write(f"{fund}->{derive_fund_company_name(_normalize(fund))}\n")
+            f.write(fund + "\n")
 
     assert True
 
@@ -63,3 +60,20 @@ def test_pick_match_with_llm():
     fund_name = "Russell Inv US Strategic Equity A"
     result = search_fund_name_with_variations(fund_name, cache_dir=cache_dir)
     assert result == "0000351601"
+
+
+def test_fund_name_prompt():
+    funds = [
+        "JNL/Newton Equity Income A",
+        "Multi-Manager Small Cap Eq Strat A",
+        "JNL/Morgan Stanley Mid Cap Growth A",
+        "GMO US Flexible Equities III",
+        "JH Adaptive Rsk Mgd U.S EqPort-Svc",
+        "Fidelity Advisor® Ser Oppc Insights",
+        "Fidelity Advisor® Ser Equity-Income",
+        "DFA US Large Cap Growth Instl",
+        "Snow Capital Infl Advtgd Equities A",
+    ]
+    prompt = _derive_company_name(funds)
+    print(prompt)
+    assert prompt

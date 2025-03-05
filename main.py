@@ -30,10 +30,15 @@ def read_funds(filename):
 
 
 def main(source_file, output_file, overwrite=False, use_llm=True):
-    n_total, n_no_match = 0, 0
+    n_total, n_no_match, offset = 0, 0, 0
 
     # read number of records in the output file
-    offset = 0 if overwrite else len(read_funds(output_file))
+    if not overwrite:
+        try:
+            with open(output_file, "r") as f:
+                offset = len(f.readlines()) - 1
+        except FileNotFoundError:
+            pass
 
     with open(output_file, "w" if overwrite else "a") as f:
         if overwrite:
@@ -57,7 +62,7 @@ def main(source_file, output_file, overwrite=False, use_llm=True):
             if not cik:
                 n_no_match += 1
 
-            f.write(f'"{name},{ticker},"{cik}"\n')
+            f.write(f"{name},{ticker},{cik}\n")
             f.flush()
 
             if n_total % 100 == 0:
@@ -71,5 +76,5 @@ if __name__ == "__main__":
         source_file="tmp/fund_name_ticker.csv",
         output_file="tmp/cik_map.csv",
         overwrite=len(sys.argv) > 1 and sys.argv[1] == "-f",
-        use_llm=False,
+        use_llm=True,
     )
