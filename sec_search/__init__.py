@@ -24,75 +24,58 @@ class RateLimitedError(Exception):
     pass
 
 
-def search_fund_with_ticker(
-    ticker: str, cache_dir: Path = default_cache_dir
-) -> str | None:
-    search_result = sec_search({"ticker": ticker}, cache_dir=cache_dir)
-    if search_result:
-        funds = _parse_fund_search_result(search_result)
-        if funds:
-            return list(funds[0])[0]
-
-    return None
-
-
-def search_fund_name_with_variations(
-    fund_name: str,
-    cache_dir: Path = default_cache_dir,
-    use_llm: bool = True,
-) -> str:
-    for company_name in _enumerate_possible_company_names(_normalize(fund_name)):
-        search_result = sec_search({"company": company_name}, cache_dir=cache_dir)
-        if search_result:
-            funds = _parse_fund_search_result(search_result)
-            if len(funds) == 1:
-                cik, *_ = funds[0]
-                return cik
-            else:
-                ciks = {list(item)[0] for item in funds}
-                if len(ciks) == 1:
-                    return ciks.pop()
-
-                if use_llm:
-                    llm_result = pick_match_with_llm(fund_name, funds)
-                    if llm_result:
-                        try:
-                            result = json.loads(llm_result)
-                            if "cik" in result:
-                                return result["cik"]
-                        except json.JSONDecodeError:
-                            pass
-                else:
-                    return "/".join(ciks)
+def search_fund_with_ticker(ticker: str, cache_dir: Path = default_cache_dir) -> str:
+    funds = _sec_search_with_cache(
+        FUND_SEARCH_URL, {"ticker": ticker}, cache_dir=cache_dir
+    )
+    if funds:
+        return list(funds[0])[0]
 
     return ""
 
 
-def search_fund_prospectus(
-    company_name: str, cache_dir: Path = default_cache_dir, use_llm: bool = True
-) -> str | None:
-    search_terms = {"type": "485", "action": "getcompany", "company": company_name[:20]}
-    result = sec_search(search_terms, cache_dir=cache_dir)
-    if not result:
-        return None
+def search_fund_name_with_variations(
+    fund_name: str,
+    use_prospectus_search: bool = False,
+    cache_dir: Path = default_cache_dir,
+    use_llm: bool = True,
+) -> str:
+    for company_name in _enumerate_possible_company_names(_normalize(fund_name)):
+        if use_prospectus_search:
+            search_terms = {
+                "type": "485",
+                "action": "getcompany",
+                "company": company_name[:20],
+            }
+            url = PROSPECTUS_SEARCH_URL
+        else:
+            search_terms = {"company": company_name}
+            url = FUND_SEARCH_URL
 
-    funds = _parse_prospectus_search_result(result)
-    if not funds:
-        return None
+        funds = _sec_search_with_cache(url, search_terms, cache_dir=cache_dir)
 
-    if len(funds) == 1:
-        return funds[0]["CIK"]
-    elif use_llm:
-        llm_result = pick_match_with_llm(company_name, funds)
-        if llm_result:
-            try:
-                result = json.loads(llm_result)
-                if "cik" in result:
-                    return result["cik"]
-            except json.JSONDecodeError:
-                pass
-    else:
-        return funds[0]["CIK"]
+        if len(funds) == 0:
+            continue
+        elif len(funds) == 1:
+            return list(funds[0])[0]
+        else:
+            ciks = {list(item)[0] for item in funds}
+            if len(ciks) == 1:
+                return ciks.pop()
+
+            if use_llm:
+                llm_result = pick_match_with_llm(fund_name, funds)
+                if llm_result:
+                    try:
+                        result = json.loads(llm_result)
+                        if "cik" in result:
+                            return result["cik"]
+                    except json.JSONDecodeError:
+                        pass
+            else:
+                return "/".join(ciks)
+
+    return ""
 
 
 @retry(
@@ -100,20 +83,23 @@ def search_fund_prospectus(
     wait=wait_fixed(5),  # Wait 5 seconds between retries
     retry=retry_if_exception_type(RateLimitedError),
 )
-def sec_search(
+def _sec_search_with_cache(
+    url: str,
     search_terms: dict[str, str],
     cache_dir: Path = default_cache_dir,
-) -> str | None:
+) -> list[str]:
     """
     check cache directory and return content of cache file if it already exists
     otherwise send request using requests and save content
     to cache
     """
-    if "action" in search_terms and search_terms["action"] == "getcompany":
-        url = PROSPECTUS_SEARCH_URL
+    is_prospectus_search = (
+        "action" in search_terms and search_terms["action"] == "getcompany"
+    )  # noqa: E501
+
+    if is_prospectus_search:
         cache_suffix = "_p"
     else:
-        url = FUND_SEARCH_URL
         cache_suffix = ""
 
     cache_filename = _parameters_checksum(search_terms) + cache_suffix + ".html"
@@ -126,9 +112,13 @@ def sec_search(
     if result:
         if not cache_file.exists():
             cache_file.write_text(result)
-        return result
+
+        if is_prospectus_search:
+            return _parse_prospectus_search_result(result)
+        else:
+            return _parse_fund_search_result(result)
     else:
-        return None
+        return []
 
 
 def _sec_search(url: str, search_terms: dict[str, str]) -> str | None:
@@ -190,7 +180,7 @@ def _parse_prospectus_search_result(html_content: str):
                     value = link.text.strip() if link else cell.get_text(strip=True)  # type: ignore
                     row_data[key] = value
 
-                data.append(row_data)
+                data.append((row_data["CIK"], "", "", "", "", row_data["Company"]))
 
             return data  # Return the first matching table
 

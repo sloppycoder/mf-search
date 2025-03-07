@@ -6,7 +6,6 @@ import pytest
 from main import read_funds
 from sec_search import (
     search_fund_name_with_variations,
-    search_fund_prospectus,
     search_fund_with_ticker,
 )
 from sec_search.llm import _derive_company_name
@@ -46,11 +45,28 @@ def test_fund_search_with_name():
 
 def test_fund_search_with_ticker():
     assert search_fund_with_ticker("LOCSX", cache_dir=cache_dir) == "0001014913"
+    assert search_fund_with_ticker("BLAH", cache_dir=cache_dir) == ""
 
 
 def test_prospectus_search():
-    result = search_fund_prospectus("Capstone", cache_dir=cache_dir, use_llm=False)
-    assert result == "0000092500"
+    assert (
+        search_fund_name_with_variations(
+            "Capstone Large Cap Equity C",
+            use_prospectus_search=True,
+            cache_dir=cache_dir,
+            use_llm=True,
+        )
+        == "0000079179"
+    )
+    assert (
+        search_fund_name_with_variations(
+            "Flutter",
+            use_prospectus_search=True,
+            cache_dir=cache_dir,
+            use_llm=False,
+        )
+        == ""
+    )
 
 
 @pytest.mark.skip(reason="This test is for manual use only")
