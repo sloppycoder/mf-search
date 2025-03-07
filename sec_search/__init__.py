@@ -12,7 +12,9 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fi
 from sec_search.llm import pick_match_with_llm
 from sec_search.util import derive_fund_company_name
 
-BASE_URL = "https://www.sec.gov/cgi-bin/series"
+FUND_SEARCH_URL = "https://www.sec.gov/cgi-bin/series"
+PROSPECTUS_SEARCH_URL = "https://www.sec.gov/cgi-bin/browse-edgar"
+
 DEFAULT_USER_AGENT = "Lee Lynn (hayashi@yahoo.com)"
 
 default_cache_dir = Path(__file__).parent / "../cache"
@@ -22,40 +24,116 @@ class RateLimitedError(Exception):
     pass
 
 
+def search_fund_with_ticker(
+    ticker: str, cache_dir: Path = default_cache_dir
+) -> str | None:
+    search_result = sec_search({"ticker": ticker}, cache_dir=cache_dir)
+    if search_result:
+        funds = _parse_fund_search_result(search_result)
+        if funds:
+            return list(funds[0])[0]
+
+    return None
+
+
+def search_fund_name_with_variations(
+    fund_name: str,
+    cache_dir: Path = default_cache_dir,
+    use_llm: bool = True,
+) -> str:
+    for company_name in _enumerate_possible_company_names(_normalize(fund_name)):
+        search_result = sec_search({"company": company_name}, cache_dir=cache_dir)
+        if search_result:
+            funds = _parse_fund_search_result(search_result)
+            if len(funds) == 1:
+                cik, *_ = funds[0]
+                return cik
+            else:
+                ciks = {list(item)[0] for item in funds}
+                if len(ciks) == 1:
+                    return ciks.pop()
+
+                if use_llm:
+                    llm_result = pick_match_with_llm(fund_name, funds)
+                    if llm_result:
+                        try:
+                            result = json.loads(llm_result)
+                            if "cik" in result:
+                                return result["cik"]
+                        except json.JSONDecodeError:
+                            pass
+                else:
+                    return "/".join(ciks)
+
+    return ""
+
+
+def search_fund_prospectus(
+    company_name: str, cache_dir: Path = default_cache_dir, use_llm: bool = True
+) -> str | None:
+    search_terms = {"type": "485", "action": "getcompany", "company": company_name[:20]}
+    result = sec_search(search_terms, cache_dir=cache_dir)
+    if not result:
+        return None
+
+    funds = _parse_prospectus_search_result(result)
+    if not funds:
+        return None
+
+    if len(funds) == 1:
+        return funds[0]["CIK"]
+    elif use_llm:
+        llm_result = pick_match_with_llm(company_name, funds)
+        if llm_result:
+            try:
+                result = json.loads(llm_result)
+                if "cik" in result:
+                    return result["cik"]
+            except json.JSONDecodeError:
+                pass
+    else:
+        return funds[0]["CIK"]
+
+
 @retry(
     stop=stop_after_attempt(3),  # Stop after 5 attempts
     wait=wait_fixed(5),  # Wait 5 seconds between retries
     retry=retry_if_exception_type(RateLimitedError),
 )
-def mutual_fund_search(
+def sec_search(
     search_terms: dict[str, str],
     cache_dir: Path = default_cache_dir,
-) -> list | None:
+) -> str | None:
     """
     check cache directory and return content of cache file if it already exists
     otherwise send request using requests and save content
     to cache
     """
-    cache_file = cache_dir / f"{_parameters_checksum(search_terms)}.html"
+    if "action" in search_terms and search_terms["action"] == "getcompany":
+        url = PROSPECTUS_SEARCH_URL
+        cache_suffix = "_p"
+    else:
+        url = FUND_SEARCH_URL
+        cache_suffix = ""
+
+    cache_filename = _parameters_checksum(search_terms) + cache_suffix + ".html"
+    cache_file = cache_dir / cache_filename
     result = (
-        cache_file.read_text()
-        if cache_file.exists()
-        else sec_mutual_fund_search(search_terms)
+        cache_file.read_text() if cache_file.exists() else _sec_search(url, search_terms)
     )
 
     if result:
         if not cache_file.exists():
             cache_file.write_text(result)
-
-        return parse_fund_search_result(result)
+        return result
     else:
         return None
 
 
-def sec_mutual_fund_search(search_terms: dict[str, str]) -> str | None:
+def _sec_search(url: str, search_terms: dict[str, str]) -> str | None:
     query_string = urlencode(search_terms)
     headers = {"User-Agent": DEFAULT_USER_AGENT}
-    response = requests.get(f"{BASE_URL}?{query_string}", headers=headers)
+    response = requests.get(f"{url}?{query_string}", headers=headers)
     if response.status_code == 200:
         return response.text
     elif response.status_code == 429:  # rate limited
@@ -64,7 +142,7 @@ def sec_mutual_fund_search(search_terms: dict[str, str]) -> str | None:
         return response.raise_for_status()
 
 
-def parse_fund_search_result(html_content: str):
+def _parse_fund_search_result(html_content: str):
     soup = BeautifulSoup(html_content, "html.parser")
     tables = soup.find_all("table")
     extracted_rows = []
@@ -88,6 +166,36 @@ def parse_fund_search_result(html_content: str):
     return _flatten_rows(extracted_rows)
 
 
+def _parse_prospectus_search_result(html_content: str):
+    soup = BeautifulSoup(html_content, "html.parser")
+    tables = soup.find_all("table")
+
+    for table in tables:
+        headers = [th.get_text(strip=True) for th in table.find_all("th")]  # type: ignore
+
+        if "CIK" in headers:
+            data = []
+            rows = table.find_all("tr")[1:]  # Skip header row # type: ignore
+
+            for row in rows:
+                cells = row.find_all(["td", "th"])  # Get all columns # type: ignore
+                if not cells:
+                    continue  # Skip empty rows
+
+                row_data = {}
+                for i, cell in enumerate(cells):
+                    key = headers[i]  # Match column header
+                    link = cell.find("a")  # Check if cell has a link # type: ignore
+                    value = link.text.strip() if link else cell.get_text(strip=True)  # type: ignore
+                    row_data[key] = value
+
+                data.append(row_data)
+
+            return data  # Return the first matching table
+
+    return []
+
+
 def _normalize(orig_fund_name: str) -> str:
     # normalize the fund name
     # replace common abbrev and symbols
@@ -108,44 +216,6 @@ def _normalize(orig_fund_name: str) -> str:
     fund_name = fund_name.replace("TRP ", "T.RowePrice")
 
     return fund_name.strip()
-
-
-def search_fund_with_ticker(
-    ticker: str, cache_dir: Path = default_cache_dir
-) -> str | None:
-    result = mutual_fund_search({"ticker": ticker})
-    return list(result[0])[0] if result else None
-
-
-def search_fund_name_with_variations(
-    fund_name: str,
-    cache_dir: Path = default_cache_dir,
-    use_llm: bool = True,
-) -> str:
-    for company_name in _enumerate_possible_company_names(_normalize(fund_name)):
-        search_result = mutual_fund_search({"company": company_name}, cache_dir=cache_dir)
-        if search_result:
-            if len(search_result) == 1:
-                cik, *_ = search_result[0]
-                return cik
-            else:
-                ciks = {list(item)[0] for item in search_result}
-                if len(ciks) == 1:
-                    return ciks.pop()
-
-                if use_llm:
-                    llm_result = pick_match_with_llm(fund_name, search_result)
-                    if llm_result:
-                        try:
-                            result = json.loads(llm_result)
-                            if "cik" in result:
-                                return result["cik"]
-                        except json.JSONDecodeError:
-                            pass
-                else:
-                    return "/".join(ciks)
-
-    return ""
 
 
 def _flatten_rows(data):

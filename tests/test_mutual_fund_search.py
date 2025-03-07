@@ -1,10 +1,13 @@
 import csv
 from pathlib import Path
 
+import pytest
+
 from main import read_funds
 from sec_search import (
-    mutual_fund_search,
     search_fund_name_with_variations,
+    search_fund_prospectus,
+    search_fund_with_ticker,
 )
 from sec_search.llm import _derive_company_name
 from sec_search.util import derive_fund_company_name
@@ -22,15 +25,24 @@ def test_read_funds():
     assert funds[3]["ticker"] == "RFISX"
 
 
-def test_mutual_fund_search():
-    result = mutual_fund_search({"company": "Westfield Capital"}, cache_dir=cache_dir)
-    assert result and len(result) == 4
-    result = mutual_fund_search({"ticker": "LOCSX"}, cache_dir=cache_dir)
-    assert result and len(result) == 1
-    result = mutual_fund_search({"ticker": "Thaler"}, cache_dir=cache_dir)
-    assert not result
+def test_fund_search_with_name():
+    assert (
+        search_fund_name_with_variations("Westfield Capital", cache_dir=cache_dir)
+        == "0000890540"
+    )
+    assert not search_fund_name_with_variations("Thaler", cache_dir=cache_dir)
 
 
+def test_fund_search_with_ticker():
+    assert search_fund_with_ticker("LOCSX", cache_dir=cache_dir) == "0001014913"
+
+
+def test_prospectus_search():
+    result = search_fund_prospectus("Capstone", cache_dir=cache_dir, use_llm=False)
+    assert result == "0000092500"
+
+
+@pytest.mark.skip(reason="This test is for manual use only")
 def test_derive_fund_company_name_batch():
     with open(Path(__file__).parent / "../tmp/cik_map.csv") as f:
         reader = csv.reader(f)
@@ -50,7 +62,6 @@ def test_derive_fund_company_name_batch():
 
 
 def test_dervie_fund_company_name():
-    # fund = "Towle Deep Value"
     fund = "Strategic Advisers® Core Multi-Mgr"
     company_name_1 = derive_fund_company_name(fund)
     assert company_name_1
@@ -75,5 +86,4 @@ def test_fund_name_prompt():
         "Snow Capital Infl Advtgd Equities A",
     ]
     prompt = _derive_company_name(funds)
-    print(prompt)
     assert prompt
