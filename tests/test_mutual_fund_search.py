@@ -27,9 +27,20 @@ def test_read_funds():
 
 def test_fund_search_with_name():
     assert (
-        search_fund_name_with_variations("Westfield Capital", cache_dir=cache_dir)
+        search_fund_name_with_variations(
+            "Westfield Capital",
+            cache_dir=cache_dir,
+        )
         == "0000890540"
     )
+    assert (
+        search_fund_name_with_variations(
+            "Russell Inv US Strategic Equity A",
+            cache_dir=cache_dir,
+        )
+        == "0000351601"
+    )
+
     assert not search_fund_name_with_variations("Thaler", cache_dir=cache_dir)
 
 
@@ -65,12 +76,6 @@ def test_dervie_fund_company_name():
     fund = "Strategic Advisers® Core Multi-Mgr"
     company_name_1 = derive_fund_company_name(fund)
     assert company_name_1
-
-
-def test_pick_match_with_llm():
-    fund_name = "Russell Inv US Strategic Equity A"
-    result = search_fund_name_with_variations(fund_name, cache_dir=cache_dir)
-    assert result == "0000351601"
 
 
 def test_fund_name_prompt():

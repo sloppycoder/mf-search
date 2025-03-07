@@ -117,6 +117,7 @@ def sec_search(
         cache_suffix = ""
 
     cache_filename = _parameters_checksum(search_terms) + cache_suffix + ".html"
+    # print(f"*** {cache_filename}")
     cache_file = cache_dir / cache_filename
     result = (
         cache_file.read_text() if cache_file.exists() else _sec_search(url, search_terms)
