@@ -39,7 +39,7 @@ def search_fund_name_with_variations(
     use_prospectus_search: bool = False,
     cache_dir: Path = default_cache_dir,
     use_llm: bool = True,
-) -> str:
+) -> tuple[str, bool]:
     for company_name in _enumerate_possible_company_names(_normalize(fund_name)):
         if use_prospectus_search:
             search_terms = {
@@ -52,16 +52,17 @@ def search_fund_name_with_variations(
             search_terms = {"company": company_name}
             url = FUND_SEARCH_URL
 
+        print(f"***{fund_name} -> {company_name}")
         funds = _sec_search_with_cache(url, search_terms, cache_dir=cache_dir)
 
         if len(funds) == 0:
             continue
         elif len(funds) == 1:
-            return list(funds[0])[0]
+            return list(funds[0])[0], False
         else:
             ciks = {list(item)[0] for item in funds}
             if len(ciks) == 1:
-                return ciks.pop()
+                return ciks.pop(), False
 
             if use_llm:
                 llm_result = pick_match_with_llm(fund_name, funds)
@@ -69,13 +70,13 @@ def search_fund_name_with_variations(
                     try:
                         result = json.loads(llm_result)
                         if "cik" in result:
-                            return result["cik"]
+                            return result["cik"], True
                     except json.JSONDecodeError:
                         pass
             else:
-                return "/".join(ciks)
+                return "/".join(ciks), False
 
-    return ""
+    return "", False
 
 
 @retry(
@@ -263,7 +264,9 @@ def _enumerate_possible_company_names(orig_fund_name: str) -> Iterator[str]:
 
     # flow will come here if none of the above yielded satisfactory results
     company_name = derive_fund_company_name(fund_name)
-    yield company_name
+    parts = [word.strip() for word in company_name.split(" ") if len(word.strip()) > 1]
+    for i in range(len(parts), 0, -1):
+        yield " ".join(parts[:i])
 
 
 def _parameters_checksum(params: dict[str, str]) -> str:

@@ -33,8 +33,10 @@ investment_keywords = {
     "growth",
     "gr",
     "instl",
+    "institutional",
     "quant",
     "balanced",
+    "secular",
 }
 
 # Words that frequently appear *before* investment terms
@@ -43,6 +45,8 @@ strategy_prefix_words = {
     "large",
     "lg",
     "lgcp",
+    "lg-cp",
+    "midcap",
     "sm",
     "small",
     "smid",

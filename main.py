@@ -29,7 +29,12 @@ def read_funds(filename):
         return []
 
 
-def main(source_file, output_file, overwrite=False, use_llm=True):
+def main(
+    source_file,
+    output_file,
+    overwrite=False,
+    use_llm=True,
+):
     n_total, n_no_match, offset = 0, 0, 0
 
     # read number of records in the output file
@@ -42,7 +47,7 @@ def main(source_file, output_file, overwrite=False, use_llm=True):
 
     with open(output_file, "w" if overwrite else "a") as f:
         if overwrite:
-            f.write("Name,Ticker,CIK\n")
+            f.write("Name,Ticker,CIK,LLM\n")
 
         for item in read_funds(source_file)[offset:]:
             n_total += 1
@@ -56,13 +61,25 @@ def main(source_file, output_file, overwrite=False, use_llm=True):
                 cik = search_fund_with_ticker(ticker)
 
             # if no match with ticker, search with fund name
+            picked_by_llm = False
             if not cik:
-                cik = search_fund_name_with_variations(name, use_llm=use_llm)
+                cik, picked_by_llm = search_fund_name_with_variations(
+                    name,
+                    use_prospectus_search=False,
+                    use_llm=use_llm,
+                )
+
+            if not cik:
+                cik, picked_by_llm = search_fund_name_with_variations(
+                    name,
+                    use_prospectus_search=True,
+                    use_llm=use_llm,
+                )
 
             if not cik:
                 n_no_match += 1
 
-            f.write(f"{name},{ticker},{cik}\n")
+            f.write(f"{name},{ticker},{cik},{1 if picked_by_llm else ''}\n")
             f.flush()
 
             if n_total % 100 == 0:
