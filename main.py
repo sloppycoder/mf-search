@@ -38,18 +38,19 @@ def main(
     n_total, n_no_match, offset = 0, 0, 0
 
     # read number of records in the output file
+    is_newfile = False
     if not overwrite:
         try:
             with open(output_file, "r") as f:
                 offset = len(f.readlines()) - 1
         except FileNotFoundError:
-            pass
+            is_newfile = True
 
     with open(output_file, "w" if overwrite else "a", newline="") as f:
         fieldnames = ["Name", "Ticker", "CIK", "LLM"]
         writer = csv.DictWriter(f, fieldnames=fieldnames, quoting=csv.QUOTE_ALL)
 
-        if overwrite:
+        if overwrite or is_newfile:
             writer.writeheader()
 
         for item in read_funds(source_file)[offset:]:
