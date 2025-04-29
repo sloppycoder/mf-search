@@ -10,7 +10,7 @@ from google.api_core.exceptions import ClientError, ResourceExhausted
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 from vertexai.generative_models import GenerativeModel
 
-DEFAULT_LLM_MODEL = "gemini-1.5-flash-002"
+DEFAULT_LLM_MODEL = "gemini-2.0-flash"
 
 
 @lru_cache(maxsize=1)
