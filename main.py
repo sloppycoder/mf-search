@@ -85,6 +85,7 @@ def main(
             writer.writerow(
                 dict(zip(fieldnames, [name, ticker, cik, "Y" if picked_by_llm else ""]))
             )
+            f.flush()  # Force flush the output to the file
 
             if n_total % 100 == 0:
                 print(f"## Total: {n_total:5d}, No matches: {n_no_match:4d}")
