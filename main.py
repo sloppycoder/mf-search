@@ -45,9 +45,12 @@ def main(
         except FileNotFoundError:
             pass
 
-    with open(output_file, "w" if overwrite else "a") as f:
+    with open(output_file, "w" if overwrite else "a", newline="") as f:
+        fieldnames = ["Name", "Ticker", "CIK", "LLM"]
+        writer = csv.DictWriter(f, fieldnames=fieldnames, quoting=csv.QUOTE_ALL)
+
         if overwrite:
-            f.write("Name,Ticker,CIK,LLM\n")
+            writer.writeheader()
 
         for item in read_funds(source_file)[offset:]:
             n_total += 1
@@ -79,8 +82,9 @@ def main(
             if not cik:
                 n_no_match += 1
 
-            f.write(f"{name},{ticker},{cik},{1 if picked_by_llm else ''}\n")
-            f.flush()
+            writer.writerow(
+                dict(zip(fieldnames, [name, ticker, cik, "Y" if picked_by_llm else ""]))
+            )
 
             if n_total % 100 == 0:
                 print(f"## Total: {n_total:5d}, No matches: {n_no_match:4d}")
