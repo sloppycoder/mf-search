@@ -1,7 +1,6 @@
 import csv
 from pathlib import Path
 
-import pandas as pd
 import pytest  # noqa: F401
 
 from main import read_funds
@@ -79,6 +78,8 @@ def test_derive_fund_company_name_batch():
 
 @pytest.mark.skip(reason="This test is for manual use only")
 def test_gen_uniq_cik_list():
+    import pandas as pd
+
     df_result = pd.read_csv(Path(__file__).parent / "../tmp/cik_map_0429.csv", dtype=str)
     df_result = df_result[["CIK"]]  # Drop all columns except "CIK"
     df_result["CIK"] = df_result["CIK"].str.lstrip("0")  # pyright: ignore Remove leading zeros
