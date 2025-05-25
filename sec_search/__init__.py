@@ -77,6 +77,13 @@ def _sec_prospectus_search(search_terms: dict[str, str]) -> list[str]:
     # UI at
     # https://www.sec.gov/search-filings/mutual-funds-search/mutual-fund-prospectuses-search
     url = "https://www.sec.gov/cgi-bin/browse-edgar"
+    search_terms.update(
+        {
+            "start": "0",
+            "count": "500",
+            "hidefilings": "0",
+        }
+    )
     response = _sec_search(url, search_terms)
     if response:
         return _parse_prospectus_search_result(response)
