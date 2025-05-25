@@ -1,6 +1,7 @@
 import csv
 from pathlib import Path
 
+import pandas as pd
 import pytest  # noqa: F401
 
 from main import read_funds
@@ -11,7 +12,6 @@ from sec_search import (
 from sec_search.llm import _derive_company_name
 from sec_search.util import derive_fund_company_name
 
-cache_dir = Path(__file__).parent / "cache"
 data_dir = Path(__file__).parent / "data"
 
 
@@ -27,37 +27,33 @@ def test_read_funds():
 def test_fund_search_with_name():
     cik, _ = search_fund_name_with_variations(
         "Westfield Capital",
-        cache_dir=cache_dir,
     )
     assert cik == "0000890540"
 
     cik, _ = search_fund_name_with_variations(
         "Russell Inv US Strategic Equity A",
-        cache_dir=cache_dir,
     )
     assert cik == "0000351601"
 
-    cik, _ = search_fund_name_with_variations("Thaler", cache_dir=cache_dir)
+    cik, _ = search_fund_name_with_variations("Thaler")
     assert cik == ""
 
 
 def test_fund_search_with_ticker():
-    assert search_fund_with_ticker("LOCSX", cache_dir=cache_dir) == "0001014913"
-    assert search_fund_with_ticker("BLAH", cache_dir=cache_dir) == ""
+    assert search_fund_with_ticker("LOCSX") == "0001014913"
+    assert search_fund_with_ticker("BLAH") == ""
 
 
 def test_prospectus_search():
     cik, _ = search_fund_name_with_variations(
         "Capstone Large Cap Equity C",
         use_prospectus_search=True,
-        cache_dir=cache_dir,
         use_llm=True,
     )
     assert cik == "0000079179"
     cik, _ = search_fund_name_with_variations(
         "Flutter",
         use_prospectus_search=True,
-        cache_dir=cache_dir,
         use_llm=False,
     )
     assert cik == ""
@@ -80,6 +76,25 @@ def test_derive_fund_company_name_batch():
         for fund in bad_list:
             f.write(fund + ",\n")
 
+
+@pytest.mark.skip(reason="This test is for manual use only")
+def test_gen_uniq_cik_list():
+    df_result = pd.read_csv(Path(__file__).parent / "../tmp/cik_map_0429.csv", dtype=str)
+    df_result = df_result[["CIK"]]  # Drop all columns except "CIK"
+    df_result["CIK"] = df_result["CIK"].str.lstrip("0")  # pyright: ignore Remove leading zeros
+    df_result = df_result.sort_values(by="CIK").drop_duplicates(  # pyright: ignore
+        subset=["CIK"], keep="first"
+    )
+    df_result.to_csv(
+        Path(__file__).parent / "../tmp/cik_list.csv",
+        index=False,
+        # quoting=csv.QUOTE_ALL,  # Quote all values
+    )
+    df_old = pd.read_csv(Path(__file__).parent / "../tmp/old_cik.csv", dtype=str)
+
+    df_result_not_in_old = df_result[~df_result["CIK"].isin(df_old["CIK"])]
+    df_old_not_in_result = df_old[~df_old["CIK"].isin(df_result["CIK"])]
+    _ = len(df_result_not_in_old) - len(df_old_not_in_result)
     assert True
 
 

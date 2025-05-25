@@ -1,5 +1,8 @@
 # Define investment-related keywords (lowercase for case-insensitive matching)
 
+import re
+from typing import Iterator
+
 geo_keywords = [
     "us",
     "global",
@@ -113,3 +116,41 @@ def derive_fund_company_name(fund_name: str) -> str:
         start_index = len(words)
 
     return " ".join(words[:start_index])
+
+
+def _normalize(orig_fund_name: str) -> str:
+    # normalize the fund name
+    # replace common abbrev and symbols
+    fund_name = orig_fund_name.replace("&", " and ")
+    fund_name = re.sub(r"U\.S\.", "US", fund_name)
+    fund_name = re.sub(r"U\.S", "US", fund_name)
+    fund_name = re.sub(r"\bInv\b", "Investment", fund_name)
+    fund_name = re.sub(r"\bCo\b", "Company", fund_name)
+    fund_name = fund_name.replace("®", "")
+    fund_name = fund_name.replace("™", "")
+    fund_name = fund_name.replace('"', "")
+    fund_name = fund_name.replace("'", "")
+    fund_name = fund_name.replace("\u00ae", "")
+
+    # fund names that yeidls no match with SEC search page
+    # and must be transformed to match
+    fund_name = fund_name.replace("JHancock", "Hancock John")
+    fund_name = fund_name.replace("TRP ", "T.RowePrice")
+
+    return fund_name.strip()
+
+
+def enumerate_possible_company_names(orig_fund_name: str) -> Iterator[str]:
+    """enumerate various company names for use with search"""
+    fund_name = _normalize(orig_fund_name)
+    if "/" in fund_name:
+        parts = fund_name.split("/")
+        yield parts[0].strip()
+    else:
+        yield fund_name.strip()
+
+    # flow will come here if none of the above yielded satisfactory results
+    company_name = derive_fund_company_name(fund_name)
+    parts = [word.strip() for word in company_name.split(" ") if len(word.strip()) > 1]
+    for i in range(len(parts), 0, -1):
+        yield " ".join(parts[:i])

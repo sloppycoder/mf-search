@@ -1,59 +1,43 @@
-import hashlib
 import json
-import re
-from pathlib import Path
-from typing import Iterator
 from urllib.parse import urlencode
 
 import requests
 from bs4 import BeautifulSoup
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
-from sec_search.llm import pick_match_with_llm
-from sec_search.util import derive_fund_company_name
-
-FUND_SEARCH_URL = "https://www.sec.gov/cgi-bin/series"
-PROSPECTUS_SEARCH_URL = "https://www.sec.gov/cgi-bin/browse-edgar"
+from .llm import pick_match_with_llm
+from .util import enumerate_possible_company_names
 
 DEFAULT_USER_AGENT = "Lee Lynn (hayashi@yahoo.com)"
-
-default_cache_dir = Path(__file__).parent / "../cache"
 
 
 class RateLimitedError(Exception):
     pass
 
 
-def search_fund_with_ticker(ticker: str, cache_dir: Path = default_cache_dir) -> str:
-    funds = _sec_search_with_cache(
-        FUND_SEARCH_URL, {"ticker": ticker}, cache_dir=cache_dir
-    )
+def search_fund_with_ticker(ticker: str) -> str:
+    funds = _sec_fund_search({"ticker": ticker})
     if funds:
         return list(funds[0])[0]
-
     return ""
 
 
-def search_fund_name_with_variations(
+def search_fund_name_with_variations(  # noqa: C901
     fund_name: str,
     use_prospectus_search: bool = False,
-    cache_dir: Path = default_cache_dir,
     use_llm: bool = True,
 ) -> tuple[str, bool]:
-    for company_name in _enumerate_possible_company_names(_normalize(fund_name)):
+    for company_name in enumerate_possible_company_names(fund_name):
         if use_prospectus_search:
-            search_terms = {
-                "type": "485",
-                "action": "getcompany",
-                "company": company_name[:20],
-            }
-            url = PROSPECTUS_SEARCH_URL
+            funds = _sec_prospectus_search(
+                {
+                    "type": "485",
+                    "action": "getcompany",
+                    "company": company_name[:20],
+                }
+            )
         else:
-            search_terms = {"company": company_name}
-            url = FUND_SEARCH_URL
-
-        print(f"***{fund_name} -> {company_name}")
-        funds = _sec_search_with_cache(url, search_terms, cache_dir=cache_dir)
+            funds = _sec_fund_search({"company": company_name})
 
         if len(funds) == 0:
             continue
@@ -79,49 +63,31 @@ def search_fund_name_with_variations(
     return "", False
 
 
+def _sec_fund_search(search_terms: dict[str, str]) -> list[str]:
+    # UI at
+    # https://www.sec.gov/search-filings/mutual-funds-search
+    url = "https://www.sec.gov/cgi-bin/series"
+    response = _sec_search(url, search_terms)
+    if response:
+        return _parse_fund_search_result(response)
+    return []
+
+
+def _sec_prospectus_search(search_terms: dict[str, str]) -> list[str]:
+    # UI at
+    # https://www.sec.gov/search-filings/mutual-funds-search/mutual-fund-prospectuses-search
+    url = "https://www.sec.gov/cgi-bin/browse-edgar"
+    response = _sec_search(url, search_terms)
+    if response:
+        return _parse_prospectus_search_result(response)
+    return []
+
+
 @retry(
-    stop=stop_after_attempt(3),  # Stop after 5 attempts
-    wait=wait_fixed(5),  # Wait 5 seconds between retries
+    stop=stop_after_attempt(3),
+    wait=wait_fixed(5),
     retry=retry_if_exception_type(RateLimitedError),
 )
-def _sec_search_with_cache(
-    url: str,
-    search_terms: dict[str, str],
-    cache_dir: Path = default_cache_dir,
-) -> list[str]:
-    """
-    check cache directory and return content of cache file if it already exists
-    otherwise send request using requests and save content
-    to cache
-    """
-    is_prospectus_search = (
-        "action" in search_terms and search_terms["action"] == "getcompany"
-    )  # noqa: E501
-
-    if is_prospectus_search:
-        cache_suffix = "_p"
-    else:
-        cache_suffix = ""
-
-    cache_filename = _parameters_checksum(search_terms) + cache_suffix + ".html"
-    # print(f"*** {cache_filename}")
-    cache_file = cache_dir / cache_filename
-    result = (
-        cache_file.read_text() if cache_file.exists() else _sec_search(url, search_terms)
-    )
-
-    if result:
-        if not cache_file.exists():
-            cache_file.write_text(result)
-
-        if is_prospectus_search:
-            return _parse_prospectus_search_result(result)
-        else:
-            return _parse_fund_search_result(result)
-    else:
-        return []
-
-
 def _sec_search(url: str, search_terms: dict[str, str]) -> str | None:
     query_string = urlencode(search_terms)
     headers = {"User-Agent": DEFAULT_USER_AGENT}
@@ -131,7 +97,7 @@ def _sec_search(url: str, search_terms: dict[str, str]) -> str | None:
     elif response.status_code == 429:  # rate limited
         raise RateLimitedError()
     else:
-        return response.raise_for_status()
+        response.raise_for_status()
 
 
 def _parse_fund_search_result(html_content: str):
@@ -188,28 +154,6 @@ def _parse_prospectus_search_result(html_content: str):
     return []
 
 
-def _normalize(orig_fund_name: str) -> str:
-    # normalize the fund name
-    # replace common abbrev and symbols
-    fund_name = orig_fund_name.replace("&", " and ")
-    fund_name = re.sub(r"U\.S\.", "US", fund_name)
-    fund_name = re.sub(r"U\.S", "US", fund_name)
-    fund_name = re.sub(r"\bInv\b", "Investment", fund_name)
-    fund_name = re.sub(r"\bCo\b", "Company", fund_name)
-    fund_name = fund_name.replace("®", "")
-    fund_name = fund_name.replace("™", "")
-    fund_name = fund_name.replace('"', "")
-    fund_name = fund_name.replace("'", "")
-    fund_name = fund_name.replace("\u00ae", "")
-
-    # fund names that yeidls no match with SEC search page
-    # and must be transformed to match
-    fund_name = fund_name.replace("JHancock", "Hancock John")
-    fund_name = fund_name.replace("TRP ", "T.RowePrice")
-
-    return fund_name.strip()
-
-
 def _flatten_rows(data):
     processed_data = []
     current_cik = ""
@@ -251,23 +195,3 @@ def _flatten_rows(data):
                 )
 
     return processed_data
-
-
-def _enumerate_possible_company_names(orig_fund_name: str) -> Iterator[str]:
-    """enumerate various company names for use with search"""
-    fund_name = _normalize(orig_fund_name)
-    if "/" in fund_name:
-        parts = fund_name.split("/")
-        yield parts[0].strip()
-    else:
-        yield fund_name.strip()
-
-    # flow will come here if none of the above yielded satisfactory results
-    company_name = derive_fund_company_name(fund_name)
-    parts = [word.strip() for word in company_name.split(" ") if len(word.strip()) > 1]
-    for i in range(len(parts), 0, -1):
-        yield " ".join(parts[:i])
-
-
-def _parameters_checksum(params: dict[str, str]) -> str:
-    return hashlib.md5(str(params).encode()).hexdigest()
