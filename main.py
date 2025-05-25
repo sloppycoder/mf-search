@@ -1,9 +1,11 @@
 import csv
 import re
 import sys
+import time
 
 from dotenv import load_dotenv
 
+from log import progress, rich_log, rich_log_done
 from sec_search import (
     search_fund_name_with_variations,
     search_fund_with_ticker,
@@ -92,6 +94,20 @@ def main(
                 print(f"## Total: {n_total:5d}, No matches: {n_no_match:4d}")
 
     print(f"## Total: {n_total:5d}, No matches: {n_no_match:4d}")
+
+
+def test_log():
+    rich_log(progress("company", "using ticker"))
+    time.sleep(3)
+    rich_log(progress("company", "using prospectus search"))
+    time.sleep(3)
+    rich_log(progress("company", "using llm"))
+    time.sleep(3)
+    rich_log_done()
+    rich_log(progress("company", "using ticker"))
+    time.sleep(3)
+    rich_log(progress("company", "using prospectus search"))
+    input()
 
 
 if __name__ == "__main__":
