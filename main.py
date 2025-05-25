@@ -1,11 +1,10 @@
 import csv
 import re
 import sys
-import time
 
 from dotenv import load_dotenv
 
-from log import progress, rich_log, rich_log_done
+from log import rich_log_done
 from sec_search import (
     search_fund_name_with_variations,
     search_fund_with_ticker,
@@ -61,16 +60,18 @@ def main(
             name = item["name"]
             ticker = item["ticker"]
             cik = ""
+            entry_name = f"{name},{ticker})"  # used for logging
 
             # search with ticker if it's available
             if ticker:
-                cik = search_fund_with_ticker(ticker)
+                cik = search_fund_with_ticker(ticker, entry_name=entry_name)
 
             # if no match with ticker, search with fund name
             picked_by_llm = False
             if not cik:
                 cik, picked_by_llm = search_fund_name_with_variations(
                     name,
+                    entry_name=entry_name,
                     use_prospectus_search=False,
                     use_llm=use_llm,
                 )
@@ -78,6 +79,7 @@ def main(
             if not cik:
                 cik, picked_by_llm = search_fund_name_with_variations(
                     name,
+                    entry_name=entry_name,
                     use_prospectus_search=True,
                     use_llm=use_llm,
                 )
@@ -93,21 +95,9 @@ def main(
             if n_total % 100 == 0:
                 print(f"## Total: {n_total:5d}, No matches: {n_no_match:4d}")
 
+            rich_log_done()
+
     print(f"## Total: {n_total:5d}, No matches: {n_no_match:4d}")
-
-
-def test_log():
-    rich_log(progress("company", "using ticker"))
-    time.sleep(3)
-    rich_log(progress("company", "using prospectus search"))
-    time.sleep(3)
-    rich_log(progress("company", "using llm"))
-    time.sleep(3)
-    rich_log_done()
-    rich_log(progress("company", "using ticker"))
-    time.sleep(3)
-    rich_log(progress("company", "using prospectus search"))
-    input()
 
 
 if __name__ == "__main__":

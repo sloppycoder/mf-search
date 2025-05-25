@@ -26,32 +26,36 @@ def test_read_funds():
 def test_fund_search_with_name():
     cik, _ = search_fund_name_with_variations(
         "Westfield Capital",
+        entry_name="Westfield Capital",
     )
     assert cik == "0000890540"
 
     cik, _ = search_fund_name_with_variations(
         "Russell Inv US Strategic Equity A",
+        entry_name="Russell Inv US Strategic Equity A",
     )
     assert cik == "0000351601"
 
-    cik, _ = search_fund_name_with_variations("Thaler")
+    cik, _ = search_fund_name_with_variations("Thaler", entry_name="Thaler")
     assert cik == ""
 
 
 def test_fund_search_with_ticker():
-    assert search_fund_with_ticker("LOCSX") == "0001014913"
-    assert search_fund_with_ticker("BLAH") == ""
+    assert search_fund_with_ticker("LOCSX", entry_name="LOCSX") == "0001014913"
+    assert search_fund_with_ticker("BLAH", entry_name="BLAH") == ""
 
 
 def test_prospectus_search():
     cik, _ = search_fund_name_with_variations(
         "Capstone Large Cap Equity C",
+        entry_name="Capstone Large Cap Equity C",
         use_prospectus_search=True,
         use_llm=True,
     )
     assert cik == "0000079179"
     cik, _ = search_fund_name_with_variations(
         "Flutter",
+        entry_name="Flutter",
         use_prospectus_search=True,
         use_llm=False,
     )

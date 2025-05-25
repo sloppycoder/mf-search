@@ -5,6 +5,8 @@ import requests
 from bs4 import BeautifulSoup
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
+from log import progress, rich_log
+
 from .llm import pick_match_with_llm
 from .util import enumerate_possible_company_names
 
@@ -15,7 +17,8 @@ class RateLimitedError(Exception):
     pass
 
 
-def search_fund_with_ticker(ticker: str) -> str:
+def search_fund_with_ticker(ticker: str, entry_name: str) -> str:
+    rich_log(progress(entry_name, f"using fund search with ticker {ticker}"))
     funds = _sec_fund_search({"ticker": ticker})
     if funds:
         return list(funds[0])[0]
@@ -24,11 +27,13 @@ def search_fund_with_ticker(ticker: str) -> str:
 
 def search_fund_name_with_variations(  # noqa: C901
     fund_name: str,
+    entry_name: str,
     use_prospectus_search: bool = False,
     use_llm: bool = True,
 ) -> tuple[str, bool]:
     for company_name in enumerate_possible_company_names(fund_name):
         if use_prospectus_search:
+            rich_log(progress(entry_name, f"using prospectus search with {company_name}"))
             funds = _sec_prospectus_search(
                 {
                     "type": "485",
@@ -37,6 +42,7 @@ def search_fund_name_with_variations(  # noqa: C901
                 }
             )
         else:
+            rich_log(progress(entry_name, f"using fund search with {company_name}"))
             funds = _sec_fund_search({"company": company_name})
 
         if len(funds) == 0:
@@ -49,6 +55,12 @@ def search_fund_name_with_variations(  # noqa: C901
                 return ciks.pop(), False
 
             if use_llm:
+                rich_log(
+                    progress(
+                        entry_name,
+                        f"using llm to pick closest match for {fund_name} amount {len(funds)} candidates",  # noqa: E501
+                    )
+                )
                 llm_result = pick_match_with_llm(fund_name, funds)
                 if llm_result:
                     try:

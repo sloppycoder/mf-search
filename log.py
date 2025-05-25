@@ -22,5 +22,7 @@ def rich_log_done():
         _logger = None
 
 
-def progress(entry: str, status: str):
-    return Text.from_markup(f"[blue]{entry}[/blue] - [green]{status}[/green]")
+def progress(entry_name: str, status: str):
+    return Text.from_markup(
+        f"[white bold]{entry_name}[/white bold] - [yellow]{status}[/yellow]"
+    )
